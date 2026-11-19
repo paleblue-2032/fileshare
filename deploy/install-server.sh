@@ -4,6 +4,10 @@
 # never restarted. Run as root: sudo bash deploy/install-server.sh
 set -euo pipefail
 
+# sudo's secure_path does not include the Nix profile. Prepend it so both the
+# preflight checks and child commands can find nix.
+export PATH="/nix/var/nix/profiles/default/bin:${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+
 REPO_DIR=/srv/fileshare
 DATA_DIR=/srv/fileshare-data
 UNIT=fileshare
