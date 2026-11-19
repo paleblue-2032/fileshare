@@ -353,10 +353,46 @@ func TestTrashAPI(t *testing.T) {
 	}
 }
 
+func TestWebDAVOptionsWithoutAuth(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+	for _, path := range []string{"/dav", "/dav/"} {
+		req, err := http.NewRequest(http.MethodOptions, ts.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("OPTIONS %s status = %d, want 200", path, resp.StatusCode)
+		}
+		if !strings.Contains(resp.Header.Get("DAV"), "1") {
+			t.Fatalf("OPTIONS %s DAV header = %q", path, resp.Header.Get("DAV"))
+		}
+	}
+
+	req, err := http.NewRequest("PROPFIND", ts.URL+"/dav/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated PROPFIND status = %d, want 401", resp.StatusCode)
+	}
+	if resp.Header.Get("WWW-Authenticate") == "" {
+		t.Fatal("missing WWW-Authenticate challenge")
+	}
+}
+
 func TestWebDAV(t *testing.T) {
 	ts, client, _ := newTestServer(t)
 	login(t, ts, client)
-
 	req, _ := http.NewRequest("PROPFIND", ts.URL+"/dav/", nil)
 	req.SetBasicAuth("fileshare", testPassword)
 	req.Header.Set("Depth", "0")

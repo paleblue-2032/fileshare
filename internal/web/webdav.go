@@ -36,6 +36,16 @@ func (f *davFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
 
 func (s *Server) davAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Some Windows WebDAV clients probe with OPTIONS and give up on a 401
+		// before sending credentials. The capability response contains no
+		// user data, so let it through and require auth for everything else.
+		if r.URL.Path == "/dav" {
+			r.URL.Path = "/dav/"
+		}
+		if r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
 		_, password, ok := r.BasicAuth()
 		if !ok {
 			s.davChallenge(w)

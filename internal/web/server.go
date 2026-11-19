@@ -99,9 +99,7 @@ func (s *Server) Handler() http.Handler {
 
 	if s.cfg.WebDAV {
 		mux.Handle("/dav/", s.davAuth(s.dav))
-		mux.HandleFunc("/dav", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/dav/", http.StatusMovedPermanently)
-		})
+		mux.Handle("/dav", s.davAuth(s.dav))
 	}
 
 	mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
