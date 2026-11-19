@@ -38,7 +38,7 @@ type Config struct {
 
 func Load() (Config, error) {
 	cfg := Config{
-		Addr:            envString("FILESHARE_ADDR", "0.0.0.0:8087"),
+		Addr:            envString("FILESHARE_ADDR", "127.0.0.1:8087"),
 		DataDir:         envString("FILESHARE_DATA_DIR", "/srv/fileshare-data"),
 		PasswordHash:    envString("FILESHARE_PASSWORD_HASH", ""),
 		DAVPasswordHash: envString("FILESHARE_DAV_PASSWORD_HASH", ""),

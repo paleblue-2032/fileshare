@@ -239,6 +239,9 @@ func (s *Store) Rename(rel, newName string) (Entry, error) {
 	if err := s.root.Rename(filesPath(rel), filesPath(newRel)); err != nil {
 		return Entry{}, err
 	}
+	if s.revokeSharesForPathLocked(rel) {
+		_ = s.saveSharesLocked()
+	}
 	return s.statLocked(newRel)
 }
 
@@ -278,6 +281,9 @@ func (s *Store) Move(rel, destDir string) (Entry, error) {
 	}
 	if err := s.root.Rename(filesPath(rel), filesPath(newRel)); err != nil {
 		return Entry{}, err
+	}
+	if s.revokeSharesForPathLocked(rel) {
+		_ = s.saveSharesLocked()
 	}
 	return s.statLocked(newRel)
 }

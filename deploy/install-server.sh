@@ -14,6 +14,7 @@ UNIT=fileshare
 PORT=8087
 SERVICE_USER=fileshare
 REPO_URL=https://github.com/paleblue-2032/fileshare.git
+ALLOW_LAN_HTTP=${ALLOW_LAN_HTTP:-0}
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "run as root: sudo bash $0" >&2
@@ -101,8 +102,12 @@ if [ ! -f "$REPO_DIR/.env" ]; then
   if [ "$quota" -gt 128849018880 ]; then quota=128849018880; fi
   if [ "$quota" -lt 5368709120 ]; then quota=5368709120; fi
   umask 077
+  listen_addr=127.0.0.1
+  if [ "$ALLOW_LAN_HTTP" = 1 ]; then
+    listen_addr=0.0.0.0
+  fi
   cat >"$REPO_DIR/.env" <<ENV
-FILESHARE_ADDR=0.0.0.0:$PORT
+FILESHARE_ADDR=$listen_addr:$PORT
 FILESHARE_DATA_DIR=$DATA_DIR
 FILESHARE_PASSWORD_HASH=$hash
 FILESHARE_QUOTA_BYTES=$quota
@@ -119,6 +124,10 @@ ENV
 else
   chmod 600 "$REPO_DIR/.env"
   echo "keeping existing $REPO_DIR/.env"
+  if grep -q '^FILESHARE_ADDR=0.0.0.0' "$REPO_DIR/.env"; then
+    echo "warning: the existing .env still binds 0.0.0.0 (plaintext LAN HTTP)" >&2
+    echo "         run: sudo botctl harden fileshare" >&2
+  fi
 fi
 
 echo "== 6. systemd unit =="
@@ -152,15 +161,18 @@ if [ -z "$LAN_CIDR" ]; then
   exit 1
 fi
 if command -v ufw >/dev/null 2>&1; then
-  if ! ufw show added 2>/dev/null | grep -Fq "from $LAN_CIDR to any port $PORT"; then
-    ufw allow from "$LAN_CIDR" to any port "$PORT" proto tcp comment 'fileshare LAN'
-  else
-    echo "LAN rule already present"
-  fi
-  if ! ufw show added 2>/dev/null | grep -Fq "on tailscale0 to any port $PORT"; then
-    ufw allow in on tailscale0 to any port "$PORT" proto tcp comment 'fileshare tailnet'
-  else
-    echo "tailnet rule already present"
+  if [ "$ALLOW_LAN_HTTP" = 1 ]; then
+    echo "warning: ALLOW_LAN_HTTP=1 exposes plaintext HTTP and WebDAV to the LAN" >&2
+    if ! ufw show added 2>/dev/null | grep -Fq "from $LAN_CIDR to any port $PORT"; then
+      ufw allow from "$LAN_CIDR" to any port "$PORT" proto tcp comment 'fileshare LAN'
+    else
+      echo "LAN rule already present"
+    fi
+    if ! ufw show added 2>/dev/null | grep -Fq "on tailscale0 to any port $PORT"; then
+      ufw allow in on tailscale0 to any port "$PORT" proto tcp comment 'fileshare tailnet'
+    else
+      echo "tailnet rule already present"
+    fi
   fi
   if ! ufw show added 2>/dev/null | grep -Fq "on tailscale0 to any port 443"; then
     ufw allow in on tailscale0 to any port 443 proto tcp comment 'fileshare tailscale serve'
@@ -214,7 +226,13 @@ fi
 server_ip=$(hostname -I | awk '{print $1}')
 echo
 echo "fileshare is running."
-echo "  URL:      http://${server_ip:-<server-ip>}:$PORT"
+if [ "$ALLOW_LAN_HTTP" = 1 ]; then
+  echo "  URL:      http://${server_ip:-<server-ip>}:$PORT  (plaintext, LAN only)"
+  echo "  warning:  prefer the Tailscale HTTPS URL for credentials and files"
+else
+  echo "  URL:      use the Tailscale HTTPS URL (tailscale serve status)"
+  echo "            http://127.0.0.1:$PORT is loopback-only"
+fi
 echo "  data:     $DATA_DIR"
 echo "  service:  systemctl status $UNIT"
 echo "  manage:   sudo botctl status fileshare"
@@ -229,3 +247,8 @@ echo "Next, for access outside the LAN:"
 echo "  sudo bash $REPO_DIR/deploy/install-tailscale.sh"
 echo "  sudo tailscale up --accept-dns=false --hostname=$(hostname)"
 echo "  sudo bash $REPO_DIR/deploy/enable-tailscale-serve.sh"
+if [ "$ALLOW_LAN_HTTP" != 1 ] && command -v tailscale >/dev/null 2>&1; then
+  if ! tailscale serve status 2>/dev/null | grep -Fq 'proxy http://127.0.0.1:8087'; then
+    echo "warning: Tailscale Serve is not configured yet; the loopback-only service is not reachable until it is" >&2
+  fi
+fi

@@ -18,6 +18,7 @@ type SweepResult struct {
 // items are permanently deleted. It also drops expired share links.
 func (s *Store) Sweep(now time.Time, retentionDays, trashDays, maxFiles int) SweepResult {
 	var res SweepResult
+	s.cleanupTemps(24 * time.Hour)
 
 	if trashDays > 0 {
 		cutoff := now.AddDate(0, 0, -trashDays)

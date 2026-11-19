@@ -29,6 +29,38 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 }
 
+func TestSessionAbsoluteLifetime(t *testing.T) {
+	m := NewSessionManager(24 * time.Hour)
+	m.maxAge = 90 * 24 * time.Hour
+	now := time.Unix(2000, 0)
+	m.now = func() time.Time { return now }
+
+	token, _, err := m.Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.Touch(token) {
+		t.Fatal("fresh session should be valid")
+	}
+	now = now.Add(91 * 24 * time.Hour)
+	if m.Touch(token) {
+		t.Fatal("session must not outlive the absolute cap")
+	}
+}
+
+func TestRevokeAllSessions(t *testing.T) {
+	m := NewSessionManager(time.Hour)
+	first, _, _ := m.Create()
+	second, _, _ := m.Create()
+	m.RevokeAll()
+	if m.Count() != 0 {
+		t.Fatalf("session count after RevokeAll = %d", m.Count())
+	}
+	if m.Touch(first) || m.Touch(second) {
+		t.Fatal("RevokeAll should invalidate every session")
+	}
+}
+
 func TestRateLimiter(t *testing.T) {
 	l := NewRateLimiter(2, time.Minute)
 	now := time.Unix(2000, 0)

@@ -95,6 +95,11 @@ func (s *Store) moveToTrashLocked(rel, reason string) (TrashItem, error) {
 		_ = s.root.Rename(".trash/"+id, p)
 		return TrashItem{}, err
 	}
+	if s.revokeSharesForPathLocked(rel) {
+		if err := s.saveSharesLocked(); err != nil {
+			return TrashItem{}, err
+		}
+	}
 	return item, nil
 }
 

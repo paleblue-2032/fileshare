@@ -18,7 +18,7 @@
           pname = "fileshare";
           version = "0.1.0";
           src = ./.;
-          vendorHash = "sha256-ATzDmv2MfaqgeYD3NyU8SzsrF45xxx5v+b/Z9Y8E7t4=";
+          vendorHash = "sha256-vj6rssVFgZVg8YmDZlnZ4NbSGyu6jVkDSViYJwN3QcU=";
           subPackages = [ "cmd/fileshare" ];
           ldflags = [
             "-s"
@@ -38,6 +38,7 @@
             pkgs.go
             pkgs.gotools
             pkgs.golangci-lint
+            pkgs.nodejs_22
             pkgs.git
           ];
         };

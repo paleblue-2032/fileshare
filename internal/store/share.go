@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -163,6 +164,26 @@ func (s *Store) shareExistsLocked(token string) bool {
 		}
 	}
 	return false
+}
+
+// revokeSharesForPathLocked removes every share whose target is rel or a
+// descendant of it. This stops an old public link from serving a different file
+// that later reuses the same path.
+func (s *Store) revokeSharesForPathLocked(rel string) bool {
+	if len(s.shareItems) == 0 {
+		return false
+	}
+	kept := s.shareItems[:0]
+	changed := false
+	for _, item := range s.shareItems {
+		if item.Path == rel || strings.HasPrefix(item.Path, rel+"/") {
+			changed = true
+			continue
+		}
+		kept = append(kept, item)
+	}
+	s.shareItems = kept
+	return changed
 }
 
 func newShareToken() (string, error) {

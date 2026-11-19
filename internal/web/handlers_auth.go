@@ -39,6 +39,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	s.sessions.Revoke(s.sessionToken(r))
 	s.clearSessionCookie(w, r)
+	w.Header().Set("Clear-Site-Data", `"cache", "cookies", "storage"`)
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleRevokeAll(w http.ResponseWriter, r *http.Request) {
+	s.sessions.RevokeAll()
+	s.clearSessionCookie(w, r)
+	w.Header().Set("Clear-Site-Data", `"cache", "cookies", "storage"`)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

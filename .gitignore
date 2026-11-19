@@ -14,3 +14,7 @@
 .commandcode/
 AGENTS.md
 .DS_Store
+
+# frontend build
+/web/node_modules/
+/web/dist/

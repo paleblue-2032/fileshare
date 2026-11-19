@@ -327,6 +327,47 @@ func TestSharesAndExpiry(t *testing.T) {
 	}
 }
 
+func TestSharesAreRevokedWhenTargetChanges(t *testing.T) {
+	s := newTestStore(t, 1<<30)
+	upload(t, s, "", "report.txt", "v1")
+	item, err := s.CreateShare("report.txt", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Delete("report.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Share(item.Token); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("share after delete = %v, want not found", err)
+	}
+
+	upload(t, s, "", "report.txt", "v2")
+	item, err = s.CreateShare("report.txt", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Rename("report.txt", "renamed.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Share(item.Token); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("share after rename = %v, want not found", err)
+	}
+
+	item, err = s.CreateShare("renamed.txt", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Mkdir("", "archive"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Move("renamed.txt", "archive"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Share(item.Token); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("share after move = %v, want not found", err)
+	}
+}
+
 func TestZip(t *testing.T) {
 	s := newTestStore(t, 1<<30)
 	if _, err := s.Mkdir("", "folder"); err != nil {

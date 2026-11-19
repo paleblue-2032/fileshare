@@ -1,6 +1,6 @@
 # fileshare
 
-自宅サーバーで動かす、個人向けのファイル共有サービスです。ブラウザから使える Web UI と、iOS のファイル App・Windows エクスプローラ・macOS Finder・Linux からマウントできる WebDAV を提供します。LAN 内は直接、外出先は Tailscale 経由でアクセスします。
+自宅サーバーで動かす、個人向けのファイル共有サービスです。ブラウザから使える Web UI と、iOS のファイル App・Windows エクスプローラ・macOS Finder・Linux からマウントできる WebDAV を提供します。アクセスは Tailscale の tailnet に限定し、自宅 LAN からも `tailscale serve` の HTTPS 経由で使います。UI は [Astryx](https://github.com/meta/astryx)（MIT）の React コンポーネントで構築しています。
 
 ## 特長
 
@@ -17,12 +17,12 @@
 ```
  [ブラウザ]   [iOS Files]   [Windows Explorer]   [macOS Finder]
       │             │               │                   │
-      │ LAN: http://<server>:8087
-      │ Tailscale: https://<host>.<tailnet>.ts.net（tailscale serve）
+      │        https://<host>.<tailnet>.ts.net
+      │        （tailscale serve、LAN からも同じ URL）
       ▼             ▼               ▼                   ▼
  ┌───────────────────────────────────────────────────────────┐
- │ fileshare.service   User=fileshare   Listen=0.0.0.0:8087  │
- │   Web UI / JSON API / WebDAV                               │
+ │ fileshare.service   User=fileshare   Listen=127.0.0.1:8087│
+ │   Astryx UI / JSON API / WebDAV                            │
  │   認証・セッション・共有リンク・ゴミ箱・クォータ・自動削除 │
  └───────────────────────────┬───────────────────────────────┘
                              ▼
@@ -33,21 +33,27 @@
                     .tmp/     ← アップロード一時ファイル
 ```
 
-インターネットへのポート開放は行いません。LAN と Tailscale tailnet からのみ到達できます。
+アプリは loopback のみを listen し、`tailscale serve` が tailnet の 443 で TLS 終端します。LAN からの平文 HTTP は既定で無効です（必要な場合のみ `ALLOW_LAN_HTTP=1` で opt-in）。インターネットへのポート開放や Funnel は行いません。
 
 ## セキュリティと分離
 
 - 専用のシステムユーザー `fileshare`（nologin）で実行
 - 専用ポート `8087`。起動前にポート衝突を確認し、使用中ならインストールを中止
+- **既定で loopback（127.0.0.1）のみを listen** し、Tailscale Serve の HTTPS 経由でのみ公開
+- セッション Cookie は `HttpOnly` / `SameSite=Strict` / HTTPS時 `Secure`。スライディング30日＋絶対90日で失効
+- 変更系 API は `X-Fileshare` ヘッダ必須（CSRF 対策）＋ CSP / `nosniff` / `Referrer-Policy` / HSTS（HTTPS時）
+- WebDAV は Basic 認証。認証失敗は IP ごと＋全体のレート制限、検証結果は短時間キャッシュ
+- 接続数は 128 に制限し、ヘッダ読み取りタイムアウトと併用して slowloris を緩和
+- 共有リンクは対象の削除・リネーム・移動時に自動失効。有効期限・失効を毎回検証
+- `botctl deploy` は root 所有の `botctl` を自己更新しない（root 昇格経路を排除）。`botctl` の更新は root で `install-server.sh` を実行する
 - systemd の `ProtectSystem=strict` / `ProtectHome=true` / `CapabilityBoundingSet=` / `SystemCallFilter=@system-service` / `MemoryDenyWriteExecute=yes` などでサンドボックス化
 - `MemoryMax=384M` / `CPUQuota=75%` / `IOWeight=50` / `Nice=10` で既存サービスを圧迫しない
 - アプリ内クォータ（インストール時に空き容量から算出）＋空き容量 3GiB 未満での書き込み拒否
 - ファイル操作は `os.Root` に閉じ込め、`..`・絶対パス・シンボリックリンク脱出を拒否
-- パスワードは PBKDF2-SHA256（600,000 回）。セッション Cookie は `HttpOnly` / `SameSite=Strict`
-- 変更系 API は `X-Fileshare` ヘッダ必須（CSRF 対策）＋ CSP / `nosniff` / `Referrer-Policy`
+- パスワードは PBKDF2-SHA256（600,000 回）。ログインは IP ごと＋全体でレート制限
 - HTML / SVG などの危険な形式は強制ダウンロード。インライン表示は画像・動画・音声・PDF・プレーンテキストのみ
-- 共有トークンは 32 バイト乱数。有効期限・失効を毎回検証し、ログでは伏字化
-- WebDAV は Basic 認証。検証結果を短時間キャッシュして PBKDF2 の連打を防ぐ
+- 共有トークンは 32 バイト乱数。ログでは伏字化し、`Referrer-Policy: no-referrer` で漏えいを抑止
+- WebDAV の未認証 OPTIONS は `/dav/` の機能情報だけを返し、子パスの存在を探れないようにする
 
 ## セットアップ
 
@@ -68,7 +74,7 @@ sudo bash ~/fileshare/deploy/install-server.sh
 
 - `/srv/fileshare` に配備し、`nix build` の成果物を systemd から起動します
 - `/srv/fileshare-data` を作成します
-- 初回のみ `.env` を生成し、**初期パスワードを一度だけ表示**します
+- 初回のみ `.env` を生成し、**初期パスワードを一度だけ表示**します。既定の待受は `127.0.0.1:8087` です
 - 2 回目以降は既存の `.env` を上書きしません
 - 既存サービスの restart / stop / 設定変更は行いません
 
@@ -76,6 +82,18 @@ sudo bash ~/fileshare/deploy/install-server.sh
 
 ```bash
 sudo ADMIN_USER=<user> bash ~/fileshare/deploy/install-server.sh
+```
+
+既存のインストールが `0.0.0.0` を使用している場合は、Tailscale Serve を確認したうえで次を実行すると loopback のみに絞れます。LAN の 8087 ルールも削除されます。
+
+```bash
+sudo botctl harden fileshare
+```
+
+LAN 内の平文 HTTP をどうしても使う場合だけ、インストーラに opt-in します（非推奨）。
+
+```bash
+sudo ALLOW_LAN_HTTP=1 bash ~/fileshare/deploy/install-server.sh
 ```
 
 インストール後の確認:
@@ -86,7 +104,7 @@ sudo botctl status fileshare
 curl -fsS http://127.0.0.1:8087/healthz
 ```
 
-### 2. Tailscale（外出先からアクセスする場合）
+### 2. Tailscale（必須）
 
 ```bash
 sudo bash /srv/fileshare/deploy/install-tailscale.sh
@@ -105,14 +123,12 @@ sudo bash /srv/fileshare/deploy/enable-tailscale-serve.sh
 
 ### 3. 端末から接続
 
-| 場所 | URL |
+| 用途 | URL |
 | --- | --- |
-| 自宅 LAN | `http://<server-ip>:8087` |
-| 外出先（Tailscale） | `https://<host>.<tailnet>.ts.net` |
-| WebDAV（LAN） | `http://<server-ip>:8087/dav/` |
-| WebDAV（Tailscale） | `https://<host>.<tailnet>.ts.net/dav/` |
+| Web UI（LAN / 外出先とも） | `https://<host>.<tailnet>.ts.net` |
+| WebDAV（LAN / 外出先とも） | `https://<host>.<tailnet>.ts.net/dav/` |
 
-ブラウザでパスワードを入力すると、端末ごとに 30 日間のセッションが発行されます。
+ブラウザでパスワードを入力すると、端末ごとにセッションが発行されます（スライディング30日、絶対90日）。同じ tailnet に入っていれば、自宅 LAN でも Tailscale の直通経路で暗号化されたまま使えます。
 
 ## WebDAV の接続
 
@@ -179,7 +195,7 @@ FILESHARE_SWEEP_MINUTES=30    # 実行間隔
 
 | 変数 | 既定値 | 内容 |
 | --- | --- | --- |
-| `FILESHARE_ADDR` | `0.0.0.0:8087` | 待受アドレス |
+| `FILESHARE_ADDR` | `127.0.0.1:8087` | 待受アドレス（Tailscale Serve 経由で公開） |
 | `FILESHARE_DATA_DIR` | `/srv/fileshare-data` | データディレクトリ |
 | `FILESHARE_PASSWORD_HASH` | 必須 | PBKDF2 ハッシュ |
 | `FILESHARE_DAV_PASSWORD_HASH` | 空 | WebDAV 専用パスワード（空ならメインと同じ） |
@@ -210,9 +226,12 @@ sudo botctl logs fileshare
 sudo botctl follow fileshare
 sudo botctl restart fileshare
 sudo botctl deploy fileshare   # git pull → nix build → restart
+sudo botctl harden fileshare   # 既存の 0.0.0.0 設定を loopback に絞り、LAN 8087 ルールを削除
 ```
 
 `commandcode` / `kosen` も同じ `botctl` から操作できます。
+
+`botctl` 自身は root 所有で、`botctl deploy` からは更新されません（ユーザー書き込み可能なファイルを root が実行する経路を避けるため）。`botctl` を更新するときは root で `install-server.sh` を実行してください。
 
 ### バックアップ
 
@@ -237,12 +256,31 @@ sudo systemctl start fileshare
 
 ## 開発
 
+Go とフロントエンドをまとめて検証します。
+
 ```bash
 nix develop
-go test ./...
-go vet ./...
-go build ./cmd/fileshare
+nix develop -c go test ./...
+nix develop -c go vet ./...
+nix develop -c golangci-lint run ./...
+nix develop -c go build ./cmd/fileshare
 ```
+
+### フロントエンド（React + Astryx）
+
+UI のソースは `web/` にあり、ビルド成果物を `internal/web/assets/` にコピーして Go バイナリに埋め込みます。`internal/web/assets/` は生成物なので直接編集しないでください。
+
+```bash
+cd web
+npm ci --include=dev   # NODE_ENV=production の環境では --include=dev が必要
+npm run build          # tsc --noEmit && vite build && copy-assets
+cd ..
+nix develop -c go build ./cmd/fileshare
+```
+
+- React 19 + Astryx 0.7.16 + Vite
+- テーマは `web/src/theme.ts`（neutral を継承し、アクセントだけ indigo に変更）
+- `web/package-lock.json` はコミット対象、`web/node_modules/` と `web/dist/` は git 管理外
 
 ローカル起動:
 
@@ -256,7 +294,7 @@ FILESHARE_MIN_FREE_BYTES=0 \
 go run ./cmd/fileshare
 ```
 
-`http://127.0.0.1:18087` を開きます。テストは `internal/auth` / `internal/store` / `internal/web` にあり、パストラバーサル、シンボリックリンク脱出、クォータ、保持期間、共有リンクの期限、WebDAV の PROPFIND/PUT/DELETE を含みます。
+`http://127.0.0.1:18087` を開きます。テストは `internal/auth` / `internal/store` / `internal/web` にあり、パストラバーサル、シンボリックリンク脱出、クォータ、保持期間、共有リンクの期限、WebDAV の PROPFIND/PUT/DELETE、セッションの絶対期限と全失効を含みます。
 
 ### 本番の検証例
 
@@ -265,9 +303,10 @@ systemctl is-active commandcode-discordbot toyamakosen-bus-bot fileshare
 systemd-analyze security fileshare.service
 systemctl show fileshare -p User -p MemoryMax -p CPUQuotaPerSecUSec \
   -p CapabilityBoundingSet -p NoNewPrivileges -p ProtectSystem -p ReadWritePaths
-ss -tlnp | grep 8087
+ss -tlnp | grep 127.0.0.1:8087
 ufw status numbered
 curl -fsS http://127.0.0.1:8087/healthz
+curl -fsSI https://<host>.<tailnet>.ts.net/healthz
 ```
 
 既存 2 サービスの `ActiveEnterTimestamp` / `NRestarts` がインストール前後で変わっていないことも確認してください。
@@ -277,9 +316,9 @@ curl -fsS http://127.0.0.1:8087/healthz
 | 症状 | 確認 |
 | --- | --- |
 | ログインできない | `sudo botctl logs fileshare`。パスワードハッシュの形式と `.env` の権限 |
-| LAN からつながらない | `ufw status numbered`、`ss -tlnp \| grep 8087`、サーバーの IP |
-| Tailscale からつながらない | `tailscale status`、`tailscale serve status`、tailnet の HTTPS 設定 |
-| WebDAV で認証が通らない | HTTPS URL か、ユーザー名は任意・パスワードが正しいか |
+| LAN の IP でつながらない | 既定では loopback のみです。`https://<host>.<tailnet>.ts.net` を使ってください。LAN 直アクセスが必要なら `ALLOW_LAN_HTTP=1` で再インストール（非推奨） |
+| Tailscale からつながらない | `tailscale status`、`tailscale serve status`、tailnet の HTTPS 設定、`ufw status numbered` |
+| WebDAV で認証が通らない | HTTPS URL か、ユーザー名は任意・パスワードが正しいか。Windows は WebClient を有効化 |
 | アップロードが 507 で失敗 | クォータ、空き容量、`FILESHARE_MIN_FREE_BYTES` |
 | ファイルが消えた | ゴミ箱、自動削除のログ（`sudo botctl logs fileshare`） |
 | 既存サービスに影響が出た | `systemctl status <unit>`。fileshare の停止は `sudo systemctl stop fileshare` のみ |

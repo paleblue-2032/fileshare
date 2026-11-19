@@ -36,15 +36,19 @@ func (f *davFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
 
 func (s *Server) davAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Some Windows WebDAV clients probe with OPTIONS and give up on a 401
-		// before sending credentials. The capability response contains no
-		// user data, so let it through and require auth for everything else.
+		// Some Windows WebDAV clients probe the DAV root with OPTIONS and give
+		// up on a 401 before sending credentials. Answer only the root from a
+		// static capability response; do not stat the path, and require auth
+		// for OPTIONS on every other path.
+		if r.Method == http.MethodOptions && (r.URL.Path == "/dav" || r.URL.Path == "/dav/") {
+			w.Header().Set("Allow", "OPTIONS, LOCK, UNLOCK, PROPFIND, PROPPATCH, PUT, MKCOL, DELETE, COPY, MOVE, GET, HEAD")
+			w.Header().Set("DAV", "1, 2")
+			w.Header().Set("MS-Author-Via", "DAV")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 		if r.URL.Path == "/dav" {
 			r.URL.Path = "/dav/"
-		}
-		if r.Method == http.MethodOptions {
-			next.ServeHTTP(w, r)
-			return
 		}
 		_, password, ok := r.BasicAuth()
 		if !ok {
@@ -54,7 +58,7 @@ func (s *Server) davAuth(next http.Handler) http.Handler {
 		digest := auth.Digest(password)
 		if !s.davCache.Allowed(digest) {
 			ip := s.clientIP(r)
-			if !s.davLimiter.Allow(ip) {
+			if !s.davLimiter.Allow(ip) || !s.davGlobalLimiter.Allow("global") {
 				http.Error(w, "too many attempts", http.StatusTooManyRequests)
 				return
 			}

@@ -353,6 +353,53 @@ func TestTrashAPI(t *testing.T) {
 	}
 }
 
+func TestSecureCookieBehindLoopbackProxy(t *testing.T) {
+	ts, _, _ := newTestServer(t)
+	client := &http.Client{}
+	req := jsonRequest(t, http.MethodPost, ts.URL+"/api/login", map[string]string{"password": testPassword})
+	req.Header.Set("X-Forwarded-Proto", "https")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("login status = %d", resp.StatusCode)
+	}
+	found := false
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == auth.CookieName {
+			found = true
+			if !cookie.Secure {
+				t.Fatal("session cookie is not Secure when the loopback proxy reports HTTPS")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("session cookie was not set")
+	}
+}
+
+func TestRevokeAllSessions(t *testing.T) {
+	ts, first, _ := newTestServer(t)
+	login(t, ts, first)
+	jar, _ := cookiejar.New(nil)
+	second := &http.Client{Jar: jar}
+	login(t, ts, second)
+
+	resp := doJSON(t, first, http.MethodPost, ts.URL+"/api/sessions/revoke-all", map[string]any{})
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("revoke-all status = %d", resp.StatusCode)
+	}
+
+	resp = doJSON(t, second, http.MethodGet, ts.URL+"/api/session", nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("second session after revoke-all = %d, want 401", resp.StatusCode)
+	}
+}
+
 func TestWebDAVOptionsWithoutAuth(t *testing.T) {
 	ts, _, _ := newTestServer(t)
 	for _, path := range []string{"/dav", "/dav/"} {
@@ -387,6 +434,19 @@ func TestWebDAVOptionsWithoutAuth(t *testing.T) {
 	}
 	if resp.Header.Get("WWW-Authenticate") == "" {
 		t.Fatal("missing WWW-Authenticate challenge")
+	}
+
+	req, err = http.NewRequest(http.MethodOptions, ts.URL+"/dav/secret", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("OPTIONS on a child path status = %d, want 401", resp.StatusCode)
 	}
 }
 

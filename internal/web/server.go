@@ -30,6 +30,7 @@ type Server struct {
 	loginLimiter       *auth.RateLimiter
 	globalLoginLimiter *auth.RateLimiter
 	davLimiter         *auth.RateLimiter
+	davGlobalLimiter   *auth.RateLimiter
 	davCache           *auth.AuthCache
 
 	dav    *webdav.Handler
@@ -48,8 +49,9 @@ func New(cfg config.Config, st *store.Store, logger *slog.Logger) (*Server, erro
 		logger:             logger,
 		sessions:           auth.NewSessionManager(cfg.SessionTTL),
 		loginLimiter:       auth.NewRateLimiter(10, 10*time.Minute),
-		globalLoginLimiter: auth.NewRateLimiter(300, 10*time.Minute),
+		globalLoginLimiter: auth.NewRateLimiter(1000, 10*time.Minute),
 		davLimiter:         auth.NewRateLimiter(30, 10*time.Minute),
+		davGlobalLimiter:   auth.NewRateLimiter(300, 10*time.Minute),
 		davCache:           auth.NewAuthCache(5 * time.Minute),
 		assets:             http.FileServer(http.FS(sub)),
 		now:                time.Now,
@@ -73,6 +75,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 	mux.HandleFunc("POST /api/logout", s.requireAuth(s.handleLogout))
+	mux.HandleFunc("POST /api/sessions/revoke-all", s.requireAuth(s.handleRevokeAll))
 	mux.HandleFunc("GET /api/session", s.requireAuth(s.handleSession))
 
 	mux.HandleFunc("GET /api/list", s.requireAuth(s.handleList))
@@ -213,7 +216,17 @@ func (s *Server) clientIP(r *http.Request) string {
 }
 
 func isHTTPS(r *http.Request) bool {
-	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	if r.TLS != nil {
+		return true
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if host != "127.0.0.1" && host != "::1" {
+		return false
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -106,6 +106,8 @@ func (s *Store) DAVRename(oldName, newName string) error {
 	if oldRel == "" || newRel == "" {
 		return ErrRootOperation
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var replacedSize int64
 	if info, statErr := s.root.Lstat(filesPath(newRel)); statErr == nil {
 		if info.IsDir() {
@@ -117,6 +119,9 @@ func (s *Store) DAVRename(oldName, newName string) error {
 	}
 	if err := s.root.Rename(filesPath(oldRel), filesPath(newRel)); err != nil {
 		return err
+	}
+	if s.revokeSharesForPathLocked(oldRel) {
+		_ = s.saveSharesLocked()
 	}
 	if replacedSize > 0 {
 		s.quota.SubUsed(replacedSize)

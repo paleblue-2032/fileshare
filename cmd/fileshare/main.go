@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 	"github.com/paleblue-2032/fileshare/internal/config"
 	"github.com/paleblue-2032/fileshare/internal/store"
 	"github.com/paleblue-2032/fileshare/internal/web"
+	"golang.org/x/net/netutil"
 )
 
 var version = "dev"
@@ -131,13 +133,20 @@ func run() error {
 		IdleTimeout:       120 * time.Second,
 		MaxHeaderBytes:    1 << 20,
 	}
+	listener, err := net.Listen("tcp", cfg.Addr)
+	if err != nil {
+		return err
+	}
+	// Cap concurrent connections so a slowloris or half-open flood cannot
+	// exhaust the process's file descriptors or goroutines.
+	listener = netutil.LimitListener(listener, 128)
 	errCh := make(chan error, 1)
 	go func() {
 		if cfg.TLSCert != "" {
-			errCh <- srv.ListenAndServeTLS(cfg.TLSCert, cfg.TLSKey)
+			errCh <- srv.ServeTLS(listener, cfg.TLSCert, cfg.TLSKey)
 			return
 		}
-		errCh <- srv.ListenAndServe()
+		errCh <- srv.Serve(listener)
 	}()
 
 	used, limit := st.QuotaSnapshot()
