@@ -101,7 +101,7 @@ sudo tailscale up --accept-dns=false --hostname=<hostname>
 sudo bash /srv/fileshare/deploy/enable-tailscale-serve.sh
 ```
 
-`tailscale serve status` に表示される `https://<host>.<tailnet>.ts.net` が Web UI の URL、`/dav/` が WebDAV の URL です。HTTPS 証明書が未有効の場合は、表示される案内から tailnet の HTTPS を有効化してください。
+`tailscale serve status` に表示される `https://<host>.<tailnet>.ts.net` が Web UI の URL、`/dav/` が WebDAV の URL です。HTTPS 証明書が未有効の場合は、Tailscale 管理コンソールの「DNS」→「HTTPS Certificates」で有効化してください。同じ画面の **Funnel は有効にしないでください**（インターネット全体への公開になり、この構成の前提と矛盾します）。
 
 ### 3. 端末から接続
 
