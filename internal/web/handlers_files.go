@@ -135,6 +135,7 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", contentDisposition(disposition, info.Name()))
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	w.Header().Set("Content-Security-Policy", "frame-ancestors 'self'")
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
