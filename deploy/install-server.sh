@@ -150,15 +150,15 @@ fi
 
 echo "== 7. firewall (additive only) =="
 LAN_CIDR=${LAN_CIDR:-}
-if [ -z "$LAN_CIDR" ]; then
+if [ "$ALLOW_LAN_HTTP" = 1 ] && [ -z "$LAN_CIDR" ]; then
   iface=$(ip -4 route show default | awk '{print $5; exit}')
   if [ -n "${iface:-}" ]; then
     LAN_CIDR=$(ip -4 route show dev "$iface" scope link | awk '$1 ~ /\// {print $1; exit}')
   fi
-fi
-if [ -z "$LAN_CIDR" ]; then
-  echo "could not detect the LAN CIDR; set LAN_CIDR (for example 192.168.1.0/24) and re-run" >&2
-  exit 1
+  if [ -z "$LAN_CIDR" ]; then
+    echo "could not detect the LAN CIDR; set LAN_CIDR (for example 192.168.1.0/24) and re-run" >&2
+    exit 1
+  fi
 fi
 if command -v ufw >/dev/null 2>&1; then
   if [ "$ALLOW_LAN_HTTP" = 1 ]; then
