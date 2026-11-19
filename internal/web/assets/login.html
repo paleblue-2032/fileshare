@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fileshare</title>
+<link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="login-body">
+<main class="login-wrap">
+  <section class="login-card">
+    <div class="login-logo" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="52" height="52" fill="none">
+        <defs>
+          <linearGradient id="lg" x1="6" y1="4" x2="42" y2="44" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#7c9cff"/>
+            <stop offset="1" stop-color="#8b5cf6"/>
+          </linearGradient>
+        </defs>
+        <rect x="5" y="9" width="38" height="31" rx="8" stroke="url(#lg)" stroke-width="2.4"/>
+        <path d="M5 19h38" stroke="url(#lg)" stroke-width="2.4"/>
+        <path d="M16 9V6.5A2.5 2.5 0 0 1 18.5 4h11A2.5 2.5 0 0 1 32 6.5V9" stroke="url(#lg)" stroke-width="2.4" stroke-linecap="round"/>
+        <circle cx="34" cy="27" r="2.2" fill="#7c9cff"/>
+      </svg>
+    </div>
+    <h1>Fileshare</h1>
+    <p class="muted">Sign in to your private drive</p>
+    <form id="login-form" novalidate>
+      <label class="field" for="password">
+        <span>Password</span>
+        <div class="password-row">
+          <input id="password" name="password" type="password" autocomplete="current-password" autofocus required>
+          <button type="button" class="btn subtle" id="toggle-password" aria-label="Show password">Show</button>
+        </div>
+      </label>
+      <p class="form-error" id="login-error" role="alert" hidden></p>
+      <button type="submit" class="btn primary wide" id="login-submit">Sign in</button>
+    </form>
+    <p class="login-note">Private server · LAN and Tailscale access only</p>
+  </section>
+</main>
+<script src="/assets/login.js" defer></script>
+</body>
+</html>

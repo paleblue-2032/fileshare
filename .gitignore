@@ -1,0 +1,16 @@
+# build output
+/result
+/fileshare
+
+# runtime
+.env
+.env.*
+!.env.example
+*.log
+
+# local data / test artifacts
+/testdata/
+/.cache/
+.commandcode/
+AGENTS.md
+.DS_Store
